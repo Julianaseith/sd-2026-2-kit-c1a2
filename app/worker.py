@@ -10,6 +10,7 @@ Rodar:  python -m app.worker
 Suba mais de um worker em terminais diferentes e veja a carga se dividir.
 """
 import time
+import json
 
 from app import fila
 from app.modelo import carregar_modelo
@@ -37,9 +38,44 @@ def main():
             fila.guardar_resultado(tarefa["id"], resultado)
 
       
-        except Exception as erro:  # noqa: BLE001
-            # TAREFA 5: retentativa + dead-letter em vez de so registrar.
-            print(f"[worker] ERRO em {tarefa['id']}: {erro}")
+        except Exception as erro:
+            tentativas = tarefa.get("tentativas", 0) + 1
+
+            print(
+                f"[worker] ERRO em {tarefa['id']}: {erro} "
+                f"(tentativa {tentativas}/3)"
+            )
+
+            if tentativas < 3:
+                tarefa["tentativas"] = tentativas
+
+                fila.cliente().rpush(
+                    fila.FILA_TAREFAS,
+                    json.dumps(tarefa)
+                )
+
+                print(
+                    f"[worker] tarefa {tarefa['id']} devolvida para a fila"
+                )
+
+            else:
+                fila.cliente().rpush(
+                    "dead-letter",
+                    json.dumps(tarefa)
+                )
+
+                fila.guardar_resultado(
+                    tarefa["id"],
+                    {
+                        "status": "erro",
+                        "erro": str(erro),
+                        "tentativas": tentativas
+                    }
+                )
+
+                print(
+                    f"[worker] tarefa {tarefa['id']} enviada para dead-letter"
+                )
 
 
 if __name__ == "__main__":
