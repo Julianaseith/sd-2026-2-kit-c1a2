@@ -13,7 +13,14 @@ Rodar:  uvicorn app.api_rest:app --reload --port 8000
 Docs:   http://localhost:8000/docs
 """
 import time
+import logging
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -62,6 +69,8 @@ def predict_sync(entrada: Entrada):
 def predict(entrada: Entrada):
     """Enfileira a tarefa e devolve o id sem esperar a inferencia."""
 
+    inicio = time.time()
+
     if not entrada.texto.strip():
         raise HTTPException(
             status_code=400,
@@ -69,6 +78,15 @@ def predict(entrada: Entrada):
         )
 
     tarefa_id = fila.enfileirar(entrada.texto)
+
+    tempo_ms = round((time.time() - inicio) * 1000, 2)
+
+    logger.info(
+        "POST /predict | id=%s | tamanho=%d | tempo_ms=%.2f",
+        tarefa_id,
+        len(entrada.texto),
+        tempo_ms
+    )
 
     return {"id": tarefa_id}
 
@@ -80,6 +98,8 @@ def predict(entrada: Entrada):
 def resultado(tarefa_id: str):
     """Devolve o resultado da tarefa ou 404 se o id nao existir."""
 
+    inicio = time.time()
+
     resultado = fila.buscar_resultado(tarefa_id)
 
     if resultado is None:
@@ -87,5 +107,14 @@ def resultado(tarefa_id: str):
             status_code=404,
             detail="tarefa nao encontrada"
         )
+
+    tempo_ms = round((time.time() - inicio) * 1000, 2)
+
+    logger.info(
+        "GET /resultado | id=%s | tamanho=%d | tempo_ms=%.2f",
+        tarefa_id,
+        len(tarefa_id),
+        tempo_ms
+    )
 
     return resultado

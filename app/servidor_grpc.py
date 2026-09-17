@@ -11,6 +11,16 @@ Rodar:  python -m app.servidor_grpc
 from concurrent import futures
 
 import grpc
+import logging
+import time
+import uuid
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+logger = logging.getLogger(__name__)
 
 from app.modelo import carregar_modelo
 
@@ -33,15 +43,30 @@ class ServicoInferencia(inferencia_pb2_grpc.InferenciaServicer):
         print("[grpc] modelo pronto")
 
     def Prever(self, request, context):
+        inicio = time.time()
+        requisicao_id = str(uuid.uuid4())
+
         r = self.modelo.prever(request.texto)
 
+        tempo_ms = round((time.time() - inicio) * 1000, 2)
+
+        logger.info(
+        "gRPC Prever | id=%s | tamanho=%d | tempo_ms=%.2f",
+        requisicao_id,
+        len(request.texto),
+        tempo_ms
+    )
+
         return inferencia_pb2.RespostaPrever(
-            texto=r["texto"],
-            sentimento=r["sentimento"],
-            confianca=r["confianca"]
-        )
+        texto=r["texto"],
+        sentimento=r["sentimento"],
+        confianca=r["confianca"]
+    )
 
     def PreverLote(self, request, context):
+        inicio = time.time()
+        requisicao_id = str(uuid.uuid4())
+
         resultados = []
 
         for texto in request.textos:
@@ -51,14 +76,24 @@ class ServicoInferencia(inferencia_pb2_grpc.InferenciaServicer):
                 texto=r["texto"],
                 sentimento=r["sentimento"],
                 confianca=r["confianca"]
-            )
+        )
 
             resultados.append(resposta)
+
+        tempo_ms = round((time.time() - inicio) * 1000, 2)
+
+        tamanho_total = sum(len(texto) for texto in request.textos)
+
+        logger.info(
+            "gRPC PreverLote | id=%s | tamanho=%d | tempo_ms=%.2f",
+            requisicao_id,
+            tamanho_total,
+            tempo_ms
+        )
 
         return inferencia_pb2.RespostaLote(
             resultados=resultados
         )
-
 
 def servir(porta: int = 50051):
     servidor = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
